@@ -1,0 +1,287 @@
+--Startups success and failure Analysis
+--Download the data from site and import in SQL
+--create a table 
+CREATE TABLE startups (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(255),
+    industry VARCHAR(255),
+    funding_amount DECIMAL,
+    funding_rounds INTEGER,
+    location VARCHAR(255),
+    founded_date DATE
+);
+
+
+SELECT * FROM companies
+
+--Importing the data in postgresql
+COPY companies(permalink, name, homepage_url, category_list, funding_total_usd, status, country_code, state_code, region, city, funding_rounds, founded_at, first_funding_at, last_funding_at)
+FROM 'C:\Program Files\PostgreSQL\16\companies.csv'
+DELIMITER ','
+CSV Header 
+
+--Check the data types 
+SELECT column_name, data_type 
+FROM information_schema.columns 
+WHERE table_name = 'companies';
+
+--Total count of comapnies
+SELECT COUNT(*) FROM companies
+
+--Average funding Amount
+SELECT AVG(funding_total_usd) FROM companies
+	
+--Sum of the funding Amount
+Select sum(funding_total_usd) from companies
+
+--max funding Amount
+Select max(funding_total_usd) from companies
+
+--min funding Amount
+select min(funding_total_usd) from companies
+
+--  DATA CLEANING--
+--(handling missing values)
+SELECT COUNT(*) FROM companies WHERE funding_total_usd =0;
+
+--Remove null values
+DELETE FROM companies
+WHERE permalink IS NULL
+   OR name IS NULL
+   OR homepage_url IS NULL
+   OR category_list IS NULL
+   OR funding_total_usd IS NULL
+   OR status IS NULL
+   OR country_code IS NULL
+   OR state_code IS NULL
+   OR region IS NULL
+   OR city IS NULL
+   OR funding_rounds IS NULL
+   OR founded_at IS NULL
+   OR first_funding_at IS NULL
+   OR last_funding_at IS NULL;
+
+-- Total number of companies with no fundings
+SELECT category_list, COUNT(*)
+FROM companies
+WHERE funding_total_usd = 0
+GROUP BY category_list
+
+--Industry Analysis of startups
+SELECT category_list, COUNT(*)
+FROM companies
+WHERE funding_total_usd = 0
+GROUP BY category_list
+ORDER BY COUNT(*) DESC;
+
+--Location Analysis of statups
+SELECT country_code, COUNT(*)
+FROM companies
+WHERE funding_total_usd = 0
+GROUP BY country_code
+ORDER BY COUNT(*) DESC;
+
+--Status Analysis of comapnies
+SELECT status, COUNT(*)
+FROM companies
+WHERE funding_total_usd = 0
+GROUP BY status
+ORDER BY COUNT(*) DESC;
+
+--Time Analysis
+SELECT EXTRACT(YEAR FROM founded_at) AS founding_year, COUNT(*)
+FROM companies
+WHERE funding_total_usd = 0
+GROUP BY founding_year
+ORDER BY founding_year;
+
+--Analyzing success rate by industry
+
+--Successful startups
+SELECT category_list, COUNT(*) AS success_count
+FROM companies
+WHERE status = 'operating'
+GROUP BY category_list
+ORDER BY success_count DESC;
+
+--Total startups by industry
+SELECT category_list, COUNT(*) AS total_count
+FROM companies
+GROUP BY category_list
+ORDER BY total_count DESC;
+
+--Calculation of success rate:
+SELECT a.category_list, 
+       a.success_count, 
+       b.total_count, 
+       (a.success_count::float / b.total_count) * 100 AS success_rate
+FROM 
+  (SELECT category_list, COUNT(*) AS success_count
+   FROM companies
+   WHERE status = 'operating'
+   GROUP BY category_list) a
+JOIN 
+  (SELECT category_list, COUNT(*) AS total_count
+   FROM companies
+   GROUP BY category_list) b
+ON a.category_list = b.category_list
+ORDER BY success_rate ASC;
+
+
+--Geographic success Analysis
+
+--Success rate by country
+SELECT country_code, 
+       COUNT(*) AS success_count
+FROM companies
+WHERE status = 'operating'
+GROUP BY country_code
+ORDER BY success_count DESC;
+
+--Total companies by country
+SELECT country_code, 
+       COUNT(*) AS total_count
+FROM companies
+GROUP BY country_code
+ORDER BY total_count DESC;
+
+--Calculation of success rate
+SELECT a.country_code, 
+       a.success_count, 
+       b.total_count, 
+       (a.success_count::float / b.total_count) * 100 AS success_rate
+FROM 
+  (SELECT country_code, COUNT(*) AS success_count
+   FROM companies
+   WHERE status = 'operating'
+   GROUP BY country_code) a
+JOIN 
+  (SELECT country_code, COUNT(*) AS total_count
+   FROM companies
+   GROUP BY country_code) b
+ON a.country_code = b.country_code
+ORDER BY success_rate DESC;
+
+--Analysis of funding by success status
+
+--Count of startups by funding Amount and status
+SELECT funding_total_usd, 
+       status, 
+       COUNT(*) AS count
+FROM companies
+GROUP BY funding_total_usd, status
+ORDER BY funding_total_usd;
+
+--Calculation of Avg funding by status
+SELECT status, 
+       AVG(funding_total_usd) AS average_funding
+FROM companies
+GROUP BY status
+ORDER BY average_funding DESC;
+
+
+--Comparison of success and failure by funding amount
+WITH funding_brackets AS (
+  SELECT 
+    CASE 
+      WHEN funding_total_usd BETWEEN 0 AND 1000000 THEN '0-1M'
+      WHEN funding_total_usd BETWEEN 1000001 AND 5000000 THEN '1M-5M'
+      WHEN funding_total_usd BETWEEN 5000001 AND 10000000 THEN '5M-10M'
+      ELSE 'Above 10M'
+    END AS funding_bracket,
+    status,
+    COUNT(*) AS count
+  FROM companies
+  GROUP BY funding_bracket, status
+)
+SELECT funding_bracket, 
+       SUM(CASE WHEN status = 'operating' THEN count ELSE 0 END) AS success_count,
+       SUM(CASE WHEN status != 'operating' THEN count ELSE 0 END) AS failure_count
+FROM funding_brackets
+GROUP BY funding_bracket
+ORDER BY funding_bracket;
+
+--Visualizing funding impact
+WITH funding_brackets AS (
+  SELECT 
+    CASE 
+      WHEN funding_total_usd BETWEEN 0 AND 1000000 THEN '0-1M'
+      WHEN funding_total_usd BETWEEN 1000001 AND 5000000 THEN '1M-5M'
+      WHEN funding_total_usd BETWEEN 5000001 AND 10000000 THEN '5M-10M'
+      ELSE 'Above 10M'
+    END AS funding_bracket,
+    COUNT(*) FILTER (WHERE status = 'operating') AS success_count,
+    COUNT(*) FILTER (WHERE status != 'operating') AS failure_count,
+    COUNT(*) AS total_count
+  FROM companies
+  GROUP BY funding_bracket
+)
+SELECT funding_bracket,
+       success_count,
+       failure_count,
+       total_count,
+       (success_count::float / total_count) * 100 AS success_rate
+FROM funding_brackets
+
+
+-- Group by founding year and success status
+--Count of successful and unsuccessul startups by founding year
+SELECT EXTRACT(YEAR FROM founded_at) AS founding_year,
+       COUNT(*) FILTER (WHERE status = 'operating') AS success_count,
+       COUNT(*) FILTER (WHERE status != 'operating') AS failure_count,
+       COUNT(*) AS total_count
+FROM companies
+GROUP BY founding_year
+ORDER BY founding_year;
+
+--success rate calculation
+WITH startup_trends AS (
+  SELECT EXTRACT(YEAR FROM founded_at) AS founding_year,
+         COUNT(*) FILTER (WHERE status = 'operating') AS success_count,
+         COUNT(*) AS total_count
+  FROM companies
+  GROUP BY founding_year
+)
+SELECT founding_year,
+       success_count,
+       total_count,
+       (success_count::float / total_count) * 100 AS success_rate
+FROM startup_trends
+ORDER BY founding_year;
+
+
+-- Analysis of common failure reasons
+--Failure Count
+SELECT category_list,
+       COUNT(*) AS failure_count
+FROM companies
+WHERE status != 'operating'
+GROUP BY category_list
+ORDER BY failure_count DESC;
+
+--Funding issues
+SELECT funding_total_usd,
+       COUNT(*) AS failure_count
+FROM companies
+WHERE status != 'operating'
+GROUP BY funding_total_usd
+ORDER BY funding_total_usd;
+
+--Category challneges
+SELECT category_list,
+       COUNT(*) AS failure_count,
+       AVG(funding_total_usd) AS avg_funding
+FROM companies
+WHERE status != 'operating'
+GROUP BY category_list
+ORDER BY failure_count DESC;
+
+--Failure by geographical issues
+SELECT country_code,
+       COUNT(*) AS failure_count,
+       AVG(funding_total_usd) AS avg_funding
+FROM companies
+WHERE status != 'operating'
+GROUP BY country_code
+ORDER BY failure_count DESC;
+
